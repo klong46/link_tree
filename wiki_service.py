@@ -19,20 +19,20 @@ import time
 # create flask packaging structure
 # optimize request efficiency and url access
 
-start_url = "" # make dynamic in POST body
+start_url = "https://www.capeelizabeth.gov" # make dynamic in POST body
 http_link_regex = "^http"
 subpage_link_regex = "^/.*"
 link_check_limit = 4
 RATE_LIMIT_PER_SECOND = 20
 REQUEST_MAX_BURST = 10
-REQUEST_TIMEOUT_IN_SECONDS = 1
+REQUEST_TIMEOUT_IN_SECONDS = 10
 
 limiter = Limiter(RATE_LIMIT_PER_SECOND, max_burst=REQUEST_MAX_BURST)
-# timeout = ClientTimeout(total=None, sock_connect=REQUEST_TIMEOUT_IN_SECONDS, sock_read=REQUEST_TIMEOUT_IN_SECONDS) # unlimited timeout
+timeout = ClientTimeout(total=None, sock_connect=REQUEST_TIMEOUT_IN_SECONDS, sock_read=REQUEST_TIMEOUT_IN_SECONDS)
 
 async def fetch_html(session, url):
     try:
-        async with session.get(url, timeout=ClientTimeout(total=None, sock_connect=5, sock_read=5)) as response:
+        async with session.get(url, timeout=timeout) as response:
             if response.status == 200:
                 await limiter.wait()
                 return await response.text()
