@@ -4,14 +4,16 @@ import time
 NUM_TICKS = 100
 APPROX_LINKS_PER_SECOND = 22
 
+def seconds_to_min_sec(seconds):
+    mins = math.floor(seconds/60)
+    remaining_seconds = seconds % 60
+    return f"{mins}m {remaining_seconds}s"
+
 class ProgressBar:
     def __init__(self, total_items):
         self.total_items = total_items
-        est_seconds_to_finish = math.floor(total_items / APPROX_LINKS_PER_SECOND)
-        self.est_minutes_to_finish = math.floor(est_seconds_to_finish/60)
-        self.remainder_seconds_to_finish = est_seconds_to_finish % 60
+        self.est_seconds_to_finish = math.floor(total_items / APPROX_LINKS_PER_SECOND)
         self.start_time = time.time()
-
 
     def print(self, completed_items):
         if self.total_items == 0:
@@ -25,8 +27,8 @@ class ProgressBar:
             else:
                 bar_string += "-"
         bar_string += "]"
-        run_time = math.floor(time.time() - self.start_time)
-        print(f"RUNNING TIME: {run_time}s")
-        print(f"EST TIME TO FINISH: {self.est_minutes_to_finish}m {self.remainder_seconds_to_finish}s.")
+        run_time_in_seconds = math.floor(time.time() - self.start_time)
+        print(f"RUNNING TIME: {seconds_to_min_sec(run_time_in_seconds)}")
+        print(f"EST TIME TO FINISH: {seconds_to_min_sec(self.est_seconds_to_finish)}.")
         print(bar_string)
         
