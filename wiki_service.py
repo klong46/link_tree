@@ -138,7 +138,7 @@ async def get_html_from_all_links(urls):
         # for result in enumerate(results):
         #     html_content += str(result)
 
-        progress_bar = ProgressBar(len(urls))
+        progress_bar = ProgressBar(len(urls), RATE_LIMIT_PER_SECOND)
         for future in asyncio.as_completed(tasks):
             result = await future
             completed_count += 1

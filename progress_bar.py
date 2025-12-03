@@ -2,7 +2,6 @@ import math
 import time
 
 NUM_TICKS = 100
-APPROX_LINKS_PER_SECOND = 22
 
 def seconds_to_min_sec(seconds):
     mins = math.floor(seconds/60)
@@ -10,9 +9,9 @@ def seconds_to_min_sec(seconds):
     return f"{mins}m {remaining_seconds}s"
 
 class ProgressBar:
-    def __init__(self, total_items):
+    def __init__(self, total_items, rate_limit):
         self.total_items = total_items
-        self.est_seconds_to_finish = math.floor(total_items / APPROX_LINKS_PER_SECOND)
+        self.est_seconds_to_finish = math.floor(total_items / rate_limit)
         self.start_time = time.time()
 
     def print(self, completed_items):
