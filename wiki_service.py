@@ -144,7 +144,7 @@ async def get_html_from_all_links(urls):
             completed_count += 1
             request_errors.print_num()
             progress_bar.print(completed_count)
-            clear_lines(3)
+            clear_lines(4)
             if result:
                 results += result
         html_content = results
