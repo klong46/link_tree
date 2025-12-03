@@ -7,6 +7,8 @@ from aiohttp import ClientTimeout
 import aiohttp
 from bs4 import BeautifulSoup
 import time
+from progress_bar import ProgressBar
+from request_errors import RequestErrors
 
 # todo
 # save context of each page visited
@@ -29,45 +31,50 @@ REQUEST_TIMEOUT_IN_SECONDS = 10
 
 limiter = Limiter(RATE_LIMIT_PER_SECOND, max_burst=REQUEST_MAX_BURST)
 timeout = ClientTimeout(total=None, sock_connect=REQUEST_TIMEOUT_IN_SECONDS, sock_read=REQUEST_TIMEOUT_IN_SECONDS)
+request_errors = RequestErrors()
+
+def clear_lines(num_lines):
+    for i in range(num_lines):
+        print("\033[1A\033[2K", end="")
 
 async def fetch_html(session, url):
     try:
-        async with session.get(url, timeout=timeout) as response:
+        async with session.get(url) as response:
             if response.status == 200:
                 await limiter.wait()
                 return await response.text()
             else:
-                print(f"{response.status} :: {url}")
+                request_errors.add_error(f"{response.status} :: {url}")
                 return False
     except aiohttp.client_exceptions.ClientConnectorCertificateError as error:
-        print(f"Error fetching {url}: {error}")
+        request_errors.add_error(error)
         return False
     except aiohttp.client_exceptions.ClientConnectorDNSError as error:
-        print(f"Error fetching {url}: {error}")
+        request_errors.add_error(error)
         return False
     except UnicodeDecodeError as error:
-        print(f"Could not decode html of {url}")
+        request_errors.add_error(error)
         return False
     except TypeError as error:
-        print(f"Could not resolve url: {url}")
+        request_errors.add_error(error)
         return False
     except aiohttp.client_exceptions.ClientResponseError as error:
-        print(f"Status 400, invalid request: {error.message}")
+        request_errors.add_error(error)
         return False
-    except asyncio.TimeoutError:
-        print(f"Request to {url} timed out!")
+    except asyncio.TimeoutError as error:
+        request_errors.add_error(error)
         return False
     except aiohttp.client_exceptions.ConnectionTimeoutError as error:
-        print(f"Connection timed out.")
+        request_errors.add_error(error)
         return False
     except aiohttp.client_exceptions.InvalidUrlClientError as error:
-        print(f"Client was not valid for {url}")
+        request_errors.add_error(error)
         return False
     except aiohttp.client_exceptions.ServerDisconnectedError as error:
-        print("Server unexpectedly disconnected.")
+        request_errors.add_error(error)
         return False
     except:
-        print(f"Unexpected error")
+        request_errors.add_error("Unexpected error")
         return False
 
 def build_ui_links(urls):
@@ -121,21 +128,23 @@ def get_all_child_links(soup):
 async def get_html_from_all_links(urls):
     start_time = time.time()
     results = ""
-    limited_urls = urls
     completed_count = 0
     html_content = ""
-    async with aiohttp.ClientSession(headers=headers.user_agent) as session:
-        tasks = [fetch_html(session, url) for url in limited_urls]
+    async with aiohttp.ClientSession(headers=headers.user_agent, timeout=timeout) as session:
+        print("\n")
+        tasks = [fetch_html(session, url) for url in urls]
 
         # results = await asyncio.gather(*tasks)
         # for result in enumerate(results):
         #     html_content += str(result)
 
+        progress_bar = ProgressBar(len(urls))
         for future in asyncio.as_completed(tasks):
             result = await future
             completed_count += 1
-            print(f"Progress: {completed_count}/{len(urls)}")
-            print("\033[1A\033[2K", end="")
+            request_errors.print_num()
+            progress_bar.print(completed_count)
+            clear_lines(3)
             if result:
                 results += result
         html_content = results
