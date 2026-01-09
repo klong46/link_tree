@@ -21,7 +21,7 @@ from request_errors import RequestErrors
 # create flask packaging structure
 # optimize request efficiency and url access
 
-start_url = "https://www.capeelizabeth.gov" # make dynamic in POST body
+start_url = "https://www.example.com" # make dynamic in POST body
 http_link_regex = "^http"
 subpage_link_regex = "^/.*"
 link_check_limit = 4
@@ -134,10 +134,6 @@ async def get_html_from_all_links(urls):
         print("\n")
         tasks = [fetch_html(session, url) for url in urls]
 
-        # results = await asyncio.gather(*tasks)
-        # for result in enumerate(results):
-        #     html_content += str(result)
-
         progress_bar = ProgressBar(len(urls), RATE_LIMIT_PER_SECOND)
         for future in asyncio.as_completed(tasks):
             result = await future
@@ -173,9 +169,9 @@ async def recursive_link_search(target_string, urls, num_clicks=0, link_tree=Non
             return f"Link check limit of {link_check_limit} reached. Checked these links: {[]}"
         
         child_urls = get_all_child_links(soup)
-        # for child in child_urls:
-        #     if link_tree:
-        #         link_tree.add_child(child)
+        for child in child_urls:
+            if link_tree:
+                link_tree.add_child(child)
         print(f"NUMBER OF CHILD LINKS: {len(child_urls)}")
         return await recursive_link_search(target_string=target_string, urls=child_urls, num_clicks=num_clicks)
     else:
