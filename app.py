@@ -8,16 +8,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def hello_world():
-    return "<p>Hello World</p>"
-
-@app.route('/test')
-def test():
-    return "<p>This is a test</p>"
-
-@app.route("/sqrt/<int:num>")
-def sqrt(num):
-    sqrt = math.sqrt(num)
-    return f"The square root of the url num is: {sqrt}"
+    return "<p>Welcome to the Link Tree application!</p>"
 
 @app.route("/wiki/<target>")
 def wiki(target):
