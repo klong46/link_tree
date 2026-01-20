@@ -7,7 +7,7 @@ import wiki_service
 app = Flask(__name__)
 
 @app.route('/')
-def hello_world():
+def home():
     return "<p>Welcome to the Link Tree application!</p>"
 
 @app.route("/wiki/<target>")

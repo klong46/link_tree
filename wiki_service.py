@@ -39,43 +39,24 @@ def clear_lines(num_lines):
 
 async def fetch_html(session, url):
     try:
+        await limiter.wait()
         async with session.get(url) as response:
             if response.status == 200:
-                await limiter.wait()
                 return await response.text()
             else:
                 request_errors.add_error(f"{response.status} :: {url}")
                 return False
-    except aiohttp.client_exceptions.ClientConnectorCertificateError as error:
-        request_errors.add_error(error)
-        return False
-    except aiohttp.client_exceptions.ClientConnectorDNSError as error:
-        request_errors.add_error(error)
-        return False
-    except UnicodeDecodeError as error:
-        request_errors.add_error(error)
-        return False
-    except TypeError as error:
-        request_errors.add_error(error)
-        return False
-    except aiohttp.client_exceptions.ClientResponseError as error:
+
+    except aiohttp.client_exceptions.ClientError as error:
         request_errors.add_error(error)
         return False
     except asyncio.TimeoutError as error:
         request_errors.add_error(error)
         return False
-    except aiohttp.client_exceptions.ConnectionTimeoutError as error:
+    except Exception as error:
         request_errors.add_error(error)
         return False
-    except aiohttp.client_exceptions.InvalidUrlClientError as error:
-        request_errors.add_error(error)
-        return False
-    except aiohttp.client_exceptions.ServerDisconnectedError as error:
-        request_errors.add_error(error)
-        return False
-    except:
-        request_errors.add_error("Unexpected error")
-        return False
+
 
 def build_ui_links(urls):
     ui_links = []
@@ -151,7 +132,7 @@ async def get_html_from_all_links(urls):
         return html_content
 
 async def recursive_link_search(target_string, urls, num_clicks=0, link_tree=None):
-    print(f"COUNT IS {num_clicks}")
+    print(f"COUNT IS {num_clicks}, TARGET IS {target_string}")
     num_clicks += 1
     html_content = await get_html_from_all_links(urls)
 
