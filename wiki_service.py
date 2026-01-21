@@ -21,7 +21,7 @@ from request_errors import RequestErrors
 # create flask packaging structure
 # optimize request efficiency and url access
 
-start_url = "https://www.example.com" # make dynamic in POST body
+start_url = "https://en.wikipedia.org/wiki/Main_Page" # make dynamic in POST body
 http_link_regex = "^http"
 subpage_link_regex = "^/.*"
 link_check_limit = 4
@@ -67,7 +67,7 @@ def build_ui_links(urls):
 
 def get_soup(html_content):
     start_time = time.time()
-    soup = BeautifulSoup(html_content, 'html.parser')
+    soup = BeautifulSoup(html_content, 'lxml')
 
     end_time = time.time()
     elapsed_time = end_time-start_time

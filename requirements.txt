@@ -122,3 +122,4 @@ websocket-client==1.5.1
 Werkzeug==3.1.4
 widgetsnbextension==4.0.5
 yarl==1.22.0
+lxml==6.0.2
