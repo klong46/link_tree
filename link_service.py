@@ -145,8 +145,6 @@ async def recursive_link_search(target_string, urls, num_clicks=0, link_tree=Non
         if target_urls:
             return f"{len(target_urls)} targets found in {num_clicks} clicks: <br> {build_ui_links(target_urls)}"
 
-        print(f"REAL LINK LIMIT IS HERE!!! {click_limit}")
-        print(f"NUM CLICKS = {num_clicks}")
         if num_clicks >= click_limit:
             return f"Link check limit of {click_limit} reached. Did not find any keyword matches."
         
