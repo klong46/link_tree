@@ -20,11 +20,13 @@ from request_errors import RequestErrors
 # refactor error handling
 # create flask packaging structure
 # optimize request efficiency and url access
+# implement redis server job queue
+# add db for batch jobs
 
 start_url = "https://en.wikipedia.org/wiki/Main_Page" # make dynamic in POST body
 HTTP_LINK_PATTERN = re.compile("^http")
 SUBPAGE_LINK_PATTERN = re.compile("^/.*")
-link_check_limit = 4
+CLICK_HARD_LIMIT = 5
 RATE_LIMIT_PER_SECOND = 20
 REQUEST_MAX_BURST = 10
 REQUEST_TIMEOUT_IN_SECONDS = 10
@@ -126,10 +128,9 @@ async def get_html_from_all_links(urls):
         end_time = time.time()
         elapsed_time = end_time-start_time
         print(f"TIME TO GET ALL HTML: {elapsed_time:.2f} seconds")
-        # return results
         return html_content
 
-async def recursive_link_search(target_string, urls, num_clicks=0, link_tree=None):
+async def recursive_link_search(target_string, urls, num_clicks=0, link_tree=None, click_limit=CLICK_HARD_LIMIT):
     print(f"COUNT IS {num_clicks}, TARGET IS {target_string}")
     num_clicks += 1
     html_content = await get_html_from_all_links(urls)
@@ -144,20 +145,22 @@ async def recursive_link_search(target_string, urls, num_clicks=0, link_tree=Non
         if target_urls:
             return f"{len(target_urls)} targets found in {num_clicks} clicks: <br> {build_ui_links(target_urls)}"
 
-        if num_clicks >= link_check_limit:
-            return f"Link check limit of {link_check_limit} reached. Checked these links: {[]}"
+        print(f"REAL LINK LIMIT IS HERE!!! {click_limit}")
+        print(f"NUM CLICKS = {num_clicks}")
+        if num_clicks >= click_limit:
+            return f"Link check limit of {click_limit} reached. Did not find any keyword matches."
         
         child_urls = get_all_child_links(soup)
         for child in child_urls:
             if link_tree:
                 link_tree.add_child(child)
         print(f"NUMBER OF CHILD LINKS: {len(child_urls)}")
-        return await recursive_link_search(target_string=target_string, urls=child_urls, num_clicks=num_clicks)
+        return await recursive_link_search(target_string=target_string, urls=child_urls, num_clicks=num_clicks, click_limit=click_limit)
     else:
         return "No content returned."
 
-async def do_search(target_string):
-    return await recursive_link_search(target_string=target_string, urls=[start_url], link_tree=LinkNode(start_url))
+async def do_search(target_string, click_limit):
+    return await recursive_link_search(target_string=target_string, urls=[start_url], link_tree=LinkNode(start_url), click_limit=click_limit)
 
-def get_shortest_path(target_string):
-    return asyncio.run(do_search(target_string))
+def get_shortest_path(target_string, click_limit):
+    return asyncio.run(do_search(target_string, click_limit))
