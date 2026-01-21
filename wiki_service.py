@@ -5,7 +5,7 @@ import asyncio
 from asynciolimiter import Limiter
 from aiohttp import ClientTimeout
 import aiohttp
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, SoupStrainer
 import time
 from progress_bar import ProgressBar
 from request_errors import RequestErrors
@@ -22,8 +22,8 @@ from request_errors import RequestErrors
 # optimize request efficiency and url access
 
 start_url = "https://en.wikipedia.org/wiki/Main_Page" # make dynamic in POST body
-http_link_regex = "^http"
-subpage_link_regex = "^/.*"
+HTTP_LINK_PATTERN = re.compile("^http")
+SUBPAGE_LINK_PATTERN = re.compile("^/.*")
 link_check_limit = 4
 RATE_LIMIT_PER_SECOND = 20
 REQUEST_MAX_BURST = 10
@@ -67,7 +67,8 @@ def build_ui_links(urls):
 
 def get_soup(html_content):
     start_time = time.time()
-    soup = BeautifulSoup(html_content, 'lxml')
+    only_links_with_http_href = SoupStrainer("a", href=HTTP_LINK_PATTERN)
+    soup = BeautifulSoup(html_content, 'lxml', parse_only=only_links_with_http_href)
 
     end_time = time.time()
     elapsed_time = end_time-start_time
@@ -76,7 +77,7 @@ def get_soup(html_content):
 
 def get_target_links(soup, target_string):
     start_time = time.time()
-    target_link_regex = f"{http_link_regex}.*{target_string}"
+    target_link_regex = f".*{target_string}"
     targets = soup.find_all("a", href=re.compile(target_link_regex, re.IGNORECASE))
     print(f"TARGETS RETRIEVED: {len(targets)}")
 
@@ -95,11 +96,8 @@ def get_target_links(soup, target_string):
 def get_all_child_links(soup):
     start_time = time.time()
     child_urls = set()
-    http_links = soup.find_all("a", href=re.compile(http_link_regex))
-    subpage_links = soup.find_all("a", href=re.compile(subpage_link_regex))
-    for link in http_links:
-        if link['href']:
-            child_urls.add(link['href'])
+    for link in soup.find_all('a'):
+        child_urls.add(link.get('href'))
 
     end_time = time.time()
     elapsed_time = end_time-start_time
