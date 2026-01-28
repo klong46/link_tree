@@ -1,0 +1,30 @@
+services:
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    networks:
+      - linktree
+
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    depends_on:
+      - redis
+    networks:
+      - linktree
+
+  worker:
+    build: .
+    command: rq worker -u redis://redis:6379 # The command to start the RQ worker
+    environment:
+      # Key point: use the Redis service name ('redis') as the hostname
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - linktree
+
+networks:
+  linktree:

@@ -1,8 +1,3 @@
-import math
-
-NUM_TICKS = 100
-APPROX_LINKS_PER_SECOND = 22
-
 class RequestErrors:
     def __init__(self):
         self.messages = []

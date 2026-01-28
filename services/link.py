@@ -22,6 +22,7 @@ from request_errors import RequestErrors
 # optimize request efficiency and url access
 # implement redis server job queue
 # add db for batch jobs
+# separate request errors instances
 
 start_url = "https://en.wikipedia.org/wiki/Main_Page" # make dynamic in POST body
 HTTP_LINK_PATTERN = re.compile("^http")
