@@ -3,13 +3,14 @@ from redis import Redis
 from rq import Queue
 import os
 from db import DB
-
 from jobs import search_for_keyword
+
+JOB_QUEUE_TIMEOUT = 86400 # 24 hours
 
 app = Flask(__name__)
 
 redis_conn = Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
-q = Queue(connection=redis_conn)
+q = Queue(default_timeout=JOB_QUEUE_TIMEOUT, connection=redis_conn)
 
 @app.route("/")
 def home():

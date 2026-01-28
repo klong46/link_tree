@@ -2,7 +2,7 @@ import link_service as link_service
 from markupsafe import escape
 from db import DB
 
-DEFAULT_CLICK_LIMIT = 5
+DEFAULT_CLICK_LIMIT = 100
 
 def search_for_keyword(keyword):
     db = DB()
