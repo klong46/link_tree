@@ -1,20 +1,28 @@
-import db_config as config
 from pymongo import MongoClient
 import os
 
+DB_NAME = "link_tree"
+COLLECTION_NAME = "keywords"
+SERVER_SELECTION_TIMEOUT = 5000
+
 class DB:
     def __init__(self):
-        try:
-            client = MongoClient(f"mongodb://{os.environ.get('MONGO_HOST', 'mongo')}:{config.PORT}/")
-            database = client.get_database(config.DB_NAME)
-            self.collection = database.get_collection(config.COLLECTION_NAME)
-        except Exception as e:
-            raise Exception("Unable to connect to DB: ", e)
+        mongo_uri = os.getenv("MONGO_URI")
+        if not mongo_uri:
+            raise RuntimeError("MONGO_URI is not set")
+
+        self.client = MongoClient(
+            mongo_uri,
+            serverSelectionTimeoutMS=SERVER_SELECTION_TIMEOUT
+        )
+        self.collection = self.client[COLLECTION_NAME][DB_NAME]
 
     def find_keyword(self, keyword):
         try:
             query = { "value": keyword }
+            print(query)
             result = self.collection.find_one(query)
+            print(result)
 
             return result
 

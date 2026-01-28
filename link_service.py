@@ -1,4 +1,4 @@
-import headers
+import headers as headers
 from link_node import LinkNode
 import re
 import asyncio

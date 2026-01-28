@@ -6,23 +6,36 @@ services:
     networks:
       - linktree
 
+  mongo:
+    image: mongo:latest
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    networks:
+      - linktree
+
   web:
     build: .
     ports:
       - "5000:5000"
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      REDIS_URL: redis://redis:6379
     depends_on:
       - redis
+      - mongo
     networks:
       - linktree
 
   worker:
     build: .
-    command: rq worker -u redis://redis:6379 # The command to start the RQ worker
+    command: rq worker -u redis://redis:6379
     environment:
-      # Key point: use the Redis service name ('redis') as the hostname
+      MONGO_URI: mongodb://mongo:27017
       REDIS_URL: redis://redis:6379
     depends_on:
       - redis
+      - mongo
     networks:
       - linktree
 
