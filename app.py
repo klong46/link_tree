@@ -40,6 +40,7 @@ def find_keyword(keyword):
             elif status == "running":
                 return "<p>Still searching for keyword!</p>"
         else:
+            db.create_keyword(keyword)
             q.enqueue(search_for_keyword, keyword, retry=Retry(max=3))
             return "<p>Starting a search for keyword!</p>"
 

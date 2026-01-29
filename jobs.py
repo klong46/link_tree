@@ -7,10 +7,7 @@ DEFAULT_CLICK_LIMIT = 100
 def search_for_keyword(keyword):
     db = DB()
     try:
-        print("Creating running job.")
-
-        db.create_keyword(keyword)
-
+        print("Created job.")
         print(f"Starting a keyword search for {keyword}")
         target_string = f"{escape(keyword)}"
         result = link_service.get_shortest_path(target_string, DEFAULT_CLICK_LIMIT)
