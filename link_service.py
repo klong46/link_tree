@@ -1,5 +1,4 @@
-import headers as headers
-from link_node import LinkNode
+from headers import link_tree_header
 import re
 import asyncio
 from asynciolimiter import Limiter
@@ -24,10 +23,9 @@ from request_errors import RequestErrors
 # add db for batch jobs
 # separate request errors instances
 
-start_url = "https://en.wikipedia.org/wiki/Main_Page" # make dynamic in POST body
 HTTP_LINK_PATTERN = re.compile("^http")
 SUBPAGE_LINK_PATTERN = re.compile("^/.*")
-CLICK_HARD_LIMIT = 5
+CLICK_HARD_LIMIT = 10
 RATE_LIMIT_PER_SECOND = 20
 REQUEST_MAX_BURST = 10
 REQUEST_TIMEOUT_IN_SECONDS = 10
@@ -60,13 +58,6 @@ async def fetch_html(session, url):
         request_errors.add_error(error)
         return False
 
-
-def build_ui_links(urls):
-    ui_links = []
-    for url in urls:
-        ui_links.append(f"<a href='{url}'>{url}<a>")
-    
-    return "<br>".join(ui_links)
 
 def get_soup(html_content):
     start_time = time.time()
@@ -107,61 +98,54 @@ def get_all_child_links(soup):
     print(f"TIME TO GET CHILD LINKS: {elapsed_time:.2f} seconds")
     return list(child_urls)
 
-async def get_html_from_all_links(urls):
-    start_time = time.time()
-    results = ""
-    completed_count = 0
+async def get_html_from_link(url):
     html_content = ""
-    async with aiohttp.ClientSession(headers=headers.user_agent, timeout=timeout) as session:
-        print("\n")
-        tasks = [fetch_html(session, url) for url in urls]
+    timeout = aiohttp.ClientTimeout(total=10)
 
-        progress_bar = ProgressBar(len(urls), RATE_LIMIT_PER_SECOND)
-        for future in asyncio.as_completed(tasks):
-            result = await future
-            completed_count += 1
-            request_errors.print_num()
-            progress_bar.print(completed_count)
-            clear_lines(4)
-            if result:
-                results += result
-        html_content = results
-        end_time = time.time()
-        elapsed_time = end_time-start_time
-        print(f"TIME TO GET ALL HTML: {elapsed_time:.2f} seconds")
-        return html_content
+    async with aiohttp.ClientSession(headers=link_tree_header, timeout=timeout) as session:
+        try:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    html_content = await response.text()
+                else:
+                    print(f"Warning: {url} returned status {response.status}")
+        except Exception as e:
+            print(f"Error fetching {url}: {e}")
 
-async def recursive_link_search(target_string, urls, num_clicks=0, link_tree=None, click_limit=CLICK_HARD_LIMIT):
+    return html_content
+
+
+
+async def link_search(target_string, url, num_clicks=0):
     print(f"COUNT IS {num_clicks}, TARGET IS {target_string}")
-    num_clicks += 1
-    html_content = await get_html_from_all_links(urls)
+    html_content = await get_html_from_link(url)
 
     if html_content:
         print(f"CONTENT LENGTH: {len(html_content)}")
         soup = get_soup(html_content)
         del html_content
         if not soup:
-            return "Hit a dead end: no valid soup found."
+            return {"status": "failure", "result": "Hit a dead end: no valid soup found."}
         
         target_urls = get_target_links(soup, target_string)
         if target_urls:
-            return f"{len(target_urls)} targets found in {num_clicks} clicks: <br> {build_ui_links(target_urls)}"
-
-        if num_clicks >= click_limit:
-            return f"Link check limit of {click_limit} reached. Did not find any keyword matches."
+            return {
+                "status": "success",
+                "result": target_urls
+            }
         
         child_urls = get_all_child_links(soup)
         del soup
-        for child in child_urls:
-            if link_tree:
-                link_tree.add_child(child)
         print(f"NUMBER OF CHILD LINKS: {len(child_urls)}")
-        return await recursive_link_search(target_string=target_string, urls=child_urls, num_clicks=num_clicks, click_limit=click_limit)
+        return {
+            "status": "continue",
+            "result": child_urls
+        }
     else:
         return "No content returned."
+    
+async def perform_search(keyword, url):
+    return await link_search(target_string=keyword, url=url)
 
-async def do_search(target_string, click_limit):
-    return await recursive_link_search(target_string=target_string, urls=[start_url], link_tree=LinkNode(start_url), click_limit=click_limit)
-
-def get_shortest_path(target_string, click_limit):
-    return asyncio.run(do_search(target_string, click_limit))
+def search_for_keyword(keyword, url):
+    return asyncio.run(perform_search(keyword, url))

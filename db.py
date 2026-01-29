@@ -20,9 +20,7 @@ class DB:
     def find_keyword(self, keyword):
         try:
             query = { "value": keyword }
-            print(query)
             result = self.collection.find_one(query)
-            print(result)
 
             return result
 

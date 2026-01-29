@@ -21,6 +21,7 @@ services:
     environment:
       MONGO_URI: mongodb://mongo:27017
       REDIS_URL: redis://redis:6379
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY}
     depends_on:
       - redis
       - mongo
@@ -29,7 +30,8 @@ services:
 
   worker:
     build: .
-    command: rq worker -u redis://redis:6379 --max-jobs 10
+    command: rq worker
+    mem_limit: 1024m
     environment:
       MONGO_URI: mongodb://mongo:27017
       REDIS_URL: redis://redis:6379
