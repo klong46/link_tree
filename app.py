@@ -1,6 +1,6 @@
 from flask import Flask
 from redis import Redis
-from rq import Queue
+from rq import Retry, Queue
 import os
 from db import DB
 from jobs import search_for_keyword
@@ -40,7 +40,7 @@ def find_keyword(keyword):
             elif status == "running":
                 return "<p>Still searching for keyword!</p>"
         else:
-            q.enqueue(search_for_keyword, keyword)
+            q.enqueue(search_for_keyword, keyword, retry=Retry(max=3))
             return "<p>Starting a search for keyword!</p>"
 
         return "<p>Job was queued!</p>"
