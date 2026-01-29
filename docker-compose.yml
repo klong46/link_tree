@@ -29,13 +29,14 @@ services:
 
   worker:
     build: .
-    command: rq worker -u redis://redis:6379
+    command: rq worker -u redis://redis:6379 --max-jobs 10
     environment:
       MONGO_URI: mongodb://mongo:27017
       REDIS_URL: redis://redis:6379
     depends_on:
       - redis
       - mongo
+    restart: always
     networks:
       - linktree
 

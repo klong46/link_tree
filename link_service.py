@@ -139,6 +139,7 @@ async def recursive_link_search(target_string, urls, num_clicks=0, link_tree=Non
     if html_content:
         print(f"CONTENT LENGTH: {len(html_content)}")
         soup = get_soup(html_content)
+        del html_content
         if not soup:
             return "Hit a dead end: no valid soup found."
         
@@ -150,6 +151,7 @@ async def recursive_link_search(target_string, urls, num_clicks=0, link_tree=Non
             return f"Link check limit of {click_limit} reached. Did not find any keyword matches."
         
         child_urls = get_all_child_links(soup)
+        del soup
         for child in child_urls:
             if link_tree:
                 link_tree.add_child(child)
