@@ -1,138 +1,149 @@
 import os
-import uuid
-import link_service as ls
-from db import DB
+import logging as log
+import json
+import time
+
 from redis import Redis
 from rq import Queue
+import link_service as ls
+from db import DB
+
+# ---- Logging ----
+log.basicConfig(level=log.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # ---- Config ----
-JOB_QUEUE_TIMEOUT = 300  # 5 minutes
+JOB_QUEUE_TIMEOUT = 300
 DEPTH_LIMIT = 5
-START_URL = "https://en.wikipedia.org/wiki/Main_Page"
+START_URL = "https://en.wikipedia.org/wiki/Dressage_judge"
+CRAWL_WORKERS = 25  # number of crawl workers per keyword
 
-# Redis connection
+# ---- Redis / Queues ----
 redis_conn = Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
 
-# Single queue for all jobs
-q = Queue("default", connection=redis_conn, default_timeout=JOB_QUEUE_TIMEOUT)
+keyword_q = Queue("keyword", connection=redis_conn, default_timeout=JOB_QUEUE_TIMEOUT)
+crawl_q = Queue("crawl", connection=redis_conn, default_timeout=JOB_QUEUE_TIMEOUT)
 
-# ---- Helper functions ----
+# ---- Redis keys ----
+def active_key(keyword):
+    return f"keyword:{keyword}:active"
+
+def frontier_key(keyword):
+    return f"keyword:{keyword}:frontier"
+
+def visited_key(keyword):
+    return f"keyword:{keyword}:visited"
+
+# ---- Helpers ----
+def serialize(url, depth):
+    return json.dumps({"url": url, "depth": depth})
+
+def deserialize(item):
+    data = json.loads(item)
+    return data["url"], data["depth"]
+
+def is_active(keyword):
+    return redis_conn.exists(active_key(keyword))
+
+def stop_keyword(keyword):
+    redis_conn.delete(active_key(keyword))
+
+def mark_visited(keyword, url):
+    return redis_conn.sadd(visited_key(keyword), url) == 1
 
 def build_ui_links(urls):
-    ui_links = []
-    for url in urls:
-        ui_links.append(f"<a href='{url}'>{url}<a>")
-    
-    return "<br>".join(ui_links)
+    return "<br>".join(f"<a href='{u}'>{u}</a>" for u in urls)
 
-def generate_user_id():
-    """Generate a unique ID for each user/session."""
-    return str(uuid.uuid4())
+def get_elapsed_time(keyword):
+    start_time = float(redis_conn.get(f"keyword:{keyword}:start_time") or time.time())
+    end_time = time.time()
+    return end_time - start_time
 
-def stop_key(user_id, keyword):
-    """Stop flag per user+keyword."""
-    return f"crawl:stop:{user_id}:{keyword}"
+# ---- Crawl worker ----
+def crawl_worker(keyword):
+    """Process URLs from the frontier until empty or keyword found."""
+    log.info(f"[{keyword}] Crawl worker started")
 
-def visited_key(user_id, keyword):
-    """Visited URLs per user+keyword."""
-    return f"visited:{user_id}:{keyword}"
+    db = DB()
 
-def should_stop(user_id, keyword):
-    """Check if this crawl should stop."""
-    return redis_conn.get(stop_key(user_id, keyword)) is not None
-
-def mark_visited(user_id, keyword, url):
-    """Mark URL as visited for this crawl. Returns True if first visit."""
-    return redis_conn.sadd(visited_key(user_id, keyword), url) == 1
-
-def clear_crawl_flags(user_id, keyword):
-    """Clear stop flag and visited set for a new crawl."""
-    redis_conn.delete(stop_key(user_id, keyword))
-    redis_conn.delete(visited_key(user_id, keyword))
-
-# ---- Crawl functions ----
-
-def enqueue_crawl(user_id, keyword, url=START_URL, depth=0):
-    """Enqueue a crawl job in the single queue."""
-    job = q.enqueue(crawl_url, user_id, keyword, url, depth)
-    job.meta['user_id'] = user_id
-    job.meta['keyword'] = keyword
-    job.save()
-
-def crawl_url(user_id, keyword, url, depth=0):
-    """
-    Crawl a URL recursively. Stops if stop flag is set or depth limit reached.
-    """
-    print(f"[{user_id}:{keyword}] Crawling {url} at depth {depth}")
-
-    # --- Check stop flag immediately ---
-    if should_stop(user_id, keyword):
-        print(f"[{user_id}:{keyword}] Stop flag detected. Skipping {url}.")
-        return
-
-    # --- Check depth ---
-    if depth >= DEPTH_LIMIT:
-        print(f"[{user_id}:{keyword}] Depth limit reached at {url}.")
-        return
-
-    # --- Avoid revisiting URLs ---
-    if not mark_visited(user_id, keyword, url):
-        print(f"[{user_id}:{keyword}] Already visited {url}. Skipping.")
-        return
-
-    db = None
     try:
-        # --- Perform the keyword search ---
-        keyword_search_result = ls.search_for_keyword(keyword, url)
-        print(f"[{user_id}:{keyword}] Search complete for {url}")
-
-        # --- Update DB if success ---
-        db = DB()
-        if keyword_search_result.get("status") == "success":
-            target_link_list = keyword_search_result.get("result") or []
-            target_link_html = build_ui_links(target_link_list)
-            db_result = f"{len(target_link_list)} targets found in {depth} clicks: <br> {target_link_html}"
-            db.update_keyword_with_result(keyword, db_result)
-            print(f"[{user_id}:{keyword}] DB updated for {url}")
-
-            # --- Stop this crawl ---
-            redis_conn.set(stop_key(user_id, keyword), 1)
-            print(f"[{user_id}:{keyword}] Target found! Stop signal set.")
-
-            # --- Clear any pending queued jobs for this user+keyword ---
-            for job in q.jobs:
-                job_user = job.meta.get("user_id")
-                job_keyword = job.meta.get("keyword")
-                if job_user == user_id and job_keyword == keyword:
-                    job.delete()
-            print(f"[{user_id}:{keyword}] Pending jobs cleared.")
-            return
-
-        # --- Stop if the job does not continue ---
-        if keyword_search_result.get("status") != "continue":
-            return
-
-        # --- Enqueue child links, stop if stop flag is set ---
-        links = keyword_search_result.get("result") or []
-        for link in links:
-            if should_stop(user_id, keyword):
-                print(f"[{user_id}:{keyword}] Stop detected, not enqueuing further links.")
+        while is_active(keyword):
+            item = redis_conn.lpop(frontier_key(keyword))
+            if not item:
+                # frontier empty → stop keyword
+                log.info(f"[{keyword}] Frontier empty, stopping crawl")
+                get_elapsed_time(keyword)
+                log.info(f"Elapsed time was: {elapsed_time:.2f}s")
+                stop_keyword(keyword)
                 break
-            enqueue_crawl(user_id, keyword, link, depth + 1)
 
-    except Exception as e:
-        print(f"[{user_id}:{keyword}] Error crawling {url}: {e}")
+            url, depth = deserialize(item)
 
+            if depth >= DEPTH_LIMIT:
+                log.info(f"[{keyword}] Reached depth limit at {url}")
+                continue
+
+            if not mark_visited(keyword, url):
+                log.info(f"[{keyword}] Already visited {url}, skipping")
+                continue
+
+            log.info(f"[{keyword}] Crawling {url} (depth={depth})")
+
+            try:
+                result = ls.search_for_keyword(keyword, url)
+
+                # Keyword found → write to DB and stop
+                if result.get("status") == "success":
+                    links = result.get("result") or []
+                    html = build_ui_links(links)
+                    elapsed_time = get_elapsed_time(keyword)
+                    elapsed_time_msg = f"Elapsed time was: {elapsed_time:.2f}s"
+                    log.info(elapsed_time_msg)
+
+                    db_result = f"{len(links)} keyword matches found at {url} in {depth} clicks. {elapsed_time_msg}<br>{html}"
+                    db.update_keyword_with_result(keyword, db_result)
+
+                    log.info(f"[{keyword}] Keyword FOUND at {url} — stopping crawl")
+                    stop_keyword(keyword)
+                    break
+
+                if result.get("status") == "failure":
+                    continue
+
+                # Push discovered links to frontier
+                for link in result.get("result") or []:
+                    if is_active(keyword):
+                        redis_conn.rpush(frontier_key(keyword), serialize(link, depth + 1))
+
+            except Exception as e:
+                log.warning(f"[{keyword}] Error crawling {url}: {e}")
+
+            # Optional: small sleep to avoid hammering
+            time.sleep(0.1)
     finally:
-        if db:
-            db.client.close()
+        db.client.close()
+        log.info(f"[{keyword}] Crawl worker exiting")
 
+# ---- Keyword job ----
+def keyword_job(keyword):
+    log.info(f"[{keyword}] Keyword job started")
+    start_time = time.time()
+    redis_conn.set(f"keyword:{keyword}:start_time", start_time)
+
+    # Initialize state
+    redis_conn.set(active_key(keyword), 1)
+    redis_conn.delete(frontier_key(keyword))
+    redis_conn.delete(visited_key(keyword))
+
+    # Seed frontier
+    redis_conn.rpush(frontier_key(keyword), serialize(START_URL, 0))
+
+    # Start fixed number of crawl workers
+    for _ in range(CRAWL_WORKERS):
+        crawl_q.enqueue(crawl_worker, keyword)
+
+    log.info(f"[{keyword}] Enqueued {CRAWL_WORKERS} crawl workers (non-blocking)")
 
 # ---- Public API ----
-
-def start_crawl(user_id, keyword):
-    print("Start a crawl for a user with a specific keyword.")
-    clear_crawl_flags(user_id, keyword)
-    enqueue_crawl(user_id, keyword)
-    print(f"[{user_id}:{keyword}] Crawl started for keyword '{keyword}'")
-    return f"{user_id}:{keyword}"  # crawl ID for tracking
+def start_crawl(keyword):
+    keyword_q.enqueue(keyword_job, keyword)
+    log.info(f"[{keyword}] Enqueued keyword job")

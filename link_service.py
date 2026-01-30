@@ -25,10 +25,9 @@ from request_errors import RequestErrors
 
 HTTP_LINK_PATTERN = re.compile("^http")
 SUBPAGE_LINK_PATTERN = re.compile("^/.*")
-CLICK_HARD_LIMIT = 10
 RATE_LIMIT_PER_SECOND = 20
 REQUEST_MAX_BURST = 10
-REQUEST_TIMEOUT_IN_SECONDS = 10
+REQUEST_TIMEOUT_IN_SECONDS = 3
 
 limiter = Limiter(RATE_LIMIT_PER_SECOND, max_burst=REQUEST_MAX_BURST)
 timeout = ClientTimeout(total=None, sock_connect=REQUEST_TIMEOUT_IN_SECONDS, sock_read=REQUEST_TIMEOUT_IN_SECONDS)
@@ -60,24 +59,26 @@ async def fetch_html(session, url):
 
 
 def get_soup(html_content):
+    if not html_content:
+        return None
     start_time = time.time()
     only_links_with_http_href = SoupStrainer("a", href=HTTP_LINK_PATTERN)
     soup = BeautifulSoup(html_content, 'lxml', parse_only=only_links_with_http_href)
 
     end_time = time.time()
     elapsed_time = end_time-start_time
-    print(f"TIME TO GET SOUP: {elapsed_time:.2f} seconds")
+    # print(f"TIME TO GET SOUP: {elapsed_time:.2f} seconds")
     return soup
 
 def get_target_links(soup, target_string):
     start_time = time.time()
     target_link_regex = f".*{target_string}"
     targets = soup.find_all("a", href=re.compile(target_link_regex, re.IGNORECASE))
-    print(f"TARGETS RETRIEVED: {len(targets)}")
+    # print(f"TARGETS RETRIEVED: {len(targets)}")
 
     end_time = time.time()
     elapsed_time = end_time-start_time
-    print(f"TIME TO GET TARGET LINK: {elapsed_time:.2f} seconds")
+    # print(f"TIME TO GET TARGET LINK: {elapsed_time:.2f} seconds")
     target_urls = set()
     for link in targets:
         if link['href']:
@@ -95,7 +96,7 @@ def get_all_child_links(soup):
 
     end_time = time.time()
     elapsed_time = end_time-start_time
-    print(f"TIME TO GET CHILD LINKS: {elapsed_time:.2f} seconds")
+    # print(f"TIME TO GET CHILD LINKS: {elapsed_time:.2f} seconds")
     return list(child_urls)
 
 async def get_html_from_link(url):
@@ -117,32 +118,29 @@ async def get_html_from_link(url):
 
 
 async def link_search(target_string, url, num_clicks=0):
-    print(f"COUNT IS {num_clicks}, TARGET IS {target_string}")
+    # print(f"COUNT IS {num_clicks}, TARGET IS {target_string}")
     html_content = await get_html_from_link(url)
 
-    if html_content:
-        print(f"CONTENT LENGTH: {len(html_content)}")
-        soup = get_soup(html_content)
-        del html_content
-        if not soup:
-            return {"status": "failure", "result": "Hit a dead end: no valid soup found."}
-        
-        target_urls = get_target_links(soup, target_string)
-        if target_urls:
-            return {
-                "status": "success",
-                "result": target_urls
-            }
-        
-        child_urls = get_all_child_links(soup)
-        del soup
-        print(f"NUMBER OF CHILD LINKS: {len(child_urls)}")
+    # print(f"CONTENT LENGTH: {len(html_content)}")
+    soup = get_soup(html_content)
+    del html_content
+    if not soup:
+        return {"status": "failure", "result": "Hit a dead end: no valid soup found."}
+    
+    target_urls = get_target_links(soup, target_string)
+    if target_urls:
         return {
-            "status": "continue",
-            "result": child_urls
+            "status": "success",
+            "result": target_urls
         }
-    else:
-        return "No content returned."
+    
+    child_urls = get_all_child_links(soup)
+    del soup
+    # print(f"NUMBER OF CHILD LINKS: {len(child_urls)}")
+    return {
+        "status": "continue",
+        "result": child_urls
+    }
     
 async def perform_search(keyword, url):
     return await link_search(target_string=keyword, url=url)

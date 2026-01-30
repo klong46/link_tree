@@ -29,9 +29,9 @@ services:
     networks:
       - linktree
 
-  worker:
+  keyword_worker:
     build: .
-    command: rq worker
+    command: rq worker keyword
     mem_limit: 1024m
     environment:
       MONGO_URI: mongodb://mongo:27017
@@ -39,7 +39,19 @@ services:
     depends_on:
       - redis
       - mongo
-    restart: always
+    networks:
+      - linktree
+
+  crawl_worker:
+    build: .
+    command: rq worker crawl
+    mem_limit: 1024m
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+      - mongo
     networks:
       - linktree
 
