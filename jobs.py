@@ -10,7 +10,8 @@ import os
 log.basicConfig(level=log.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # ---- Config ----
-JOB_QUEUE_TIMEOUT = 300
+KEYWORD_QUEUE_TIMEOUT = 86400 # 24 hours
+CRAWL_QUEUE_TIMEOUT = 300 # 5 min
 DEPTH_LIMIT = 5
 START_URL = "https://en.wikipedia.org/wiki/Dressage_judge"
 CRAWL_WORKERS = 30
@@ -19,8 +20,8 @@ BATCH_SIZE = 50
 # ---- Redis / Queues ----
 redis_conn = Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
 
-keyword_q = Queue("keyword", connection=redis_conn, default_timeout=JOB_QUEUE_TIMEOUT)
-crawl_q = Queue("crawl", connection=redis_conn, default_timeout=JOB_QUEUE_TIMEOUT)
+keyword_q = Queue("keyword", connection=redis_conn, default_timeout=KEYWORD_QUEUE_TIMEOUT)
+crawl_q = Queue("crawl", connection=redis_conn, default_timeout=CRAWL_QUEUE_TIMEOUT)
 
 # ---- Redis keys ----
 def active_key(keyword):
