@@ -11,7 +11,7 @@ log.basicConfig(level=log.INFO, format='%(asctime)s - %(levelname)s - %(message)
 
 # ---- Config ----
 KEYWORD_QUEUE_TIMEOUT = 86400 # 24 hours
-CRAWL_QUEUE_TIMEOUT = 300 # 5 min
+CRAWL_QUEUE_TIMEOUT = 86400 # 24 hours
 DEPTH_LIMIT = 5
 START_URL = "https://en.wikipedia.org/wiki/Dressage_judge"
 CRAWL_WORKERS = 30
