@@ -13,8 +13,8 @@ log.basicConfig(level=log.INFO, format='%(asctime)s - %(levelname)s - %(message)
 JOB_QUEUE_TIMEOUT = 300
 DEPTH_LIMIT = 5
 START_URL = "https://en.wikipedia.org/wiki/Dressage_judge"
-CRAWL_WORKERS = 25
-BATCH_SIZE = 500
+CRAWL_WORKERS = 30
+BATCH_SIZE = 50
 
 # ---- Redis / Queues ----
 redis_conn = Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
