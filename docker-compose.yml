@@ -46,6 +46,8 @@ services:
     build: .
     command: rq worker crawl
     mem_limit: 1024m
+    deploy:
+      replicas: 25
     environment:
       MONGO_URI: mongodb://mongo:27017
       REDIS_URL: redis://redis:6379

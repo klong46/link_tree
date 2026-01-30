@@ -1,21 +1,20 @@
-import os
-import logging as log
-import json
 import time
-
+import json
+import logging as log
 from redis import Redis
 from rq import Queue
 import link_service as ls
 from db import DB
+import os
 
-# ---- Logging ----
 log.basicConfig(level=log.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # ---- Config ----
 JOB_QUEUE_TIMEOUT = 300
 DEPTH_LIMIT = 5
 START_URL = "https://en.wikipedia.org/wiki/Dressage_judge"
-CRAWL_WORKERS = 25  # number of crawl workers per keyword
+CRAWL_WORKERS = 25
+BATCH_SIZE = 500
 
 # ---- Redis / Queues ----
 redis_conn = Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
@@ -55,95 +54,112 @@ def build_ui_links(urls):
 
 def get_elapsed_time(keyword):
     start_time = float(redis_conn.get(f"keyword:{keyword}:start_time") or time.time())
-    end_time = time.time()
-    return end_time - start_time
+    return time.time() - start_time
 
 # ---- Crawl worker ----
 def crawl_worker(keyword):
-    """Process URLs from the frontier until empty or keyword found."""
-    log.info(f"[{keyword}] Crawl worker started")
-
     db = DB()
-
     try:
         while is_active(keyword):
-            item = redis_conn.lpop(frontier_key(keyword))
-            if not item:
-                # frontier empty → stop keyword
-                log.info(f"[{keyword}] Frontier empty, stopping crawl")
-                get_elapsed_time(keyword)
-                log.info(f"Elapsed time was: {elapsed_time:.2f}s")
-                stop_keyword(keyword)
-                break
+            # Atomically claim a batch from the frontier
+            batch = []
+            for _ in range(BATCH_SIZE):
+                item = redis_conn.lpop(frontier_key(keyword))
+                if not item:
+                    break
+                url, depth = deserialize(item)
+                if mark_visited(keyword, url):
+                    batch.append((url, depth))
 
-            url, depth = deserialize(item)
-
-            if depth >= DEPTH_LIMIT:
-                log.info(f"[{keyword}] Reached depth limit at {url}")
+            if not batch:
+                # Frontier might still get new URLs from other workers or child links
+                frontier_size = redis_conn.llen(frontier_key(keyword))
+                if frontier_size == 0 and is_active(keyword):
+                    # Only write "No matches" if no success has been recorded yet
+                    existing_result = db.find_keyword(keyword)  # implement in DB
+                    if not existing_result:
+                        db.update_keyword_with_result(
+                            keyword, f"No matches found in {get_elapsed_time(keyword):.2f}s"
+                        )
+                        stop_keyword(keyword)
+                        log.info(f"[{keyword}] Frontier empty, stopping crawl with no matches.")
+                # Wait for other workers / next batch
+                time.sleep(0.1)
                 continue
 
-            if not mark_visited(keyword, url):
-                log.info(f"[{keyword}] Already visited {url}, skipping")
-                continue
-
-            log.info(f"[{keyword}] Crawling {url} (depth={depth})")
+            urls, depths = zip(*batch)
+            log.info(f"[{keyword}] Processing batch of {len(batch)} URLs")
 
             try:
-                result = ls.search_for_keyword(keyword, url)
+                results = ls.search_for_keyword(keyword, urls)
+                if isinstance(results, dict):
+                    results = [results]  # single URL → make list
 
-                # Keyword found → write to DB and stop
-                if result.get("status") == "success":
-                    links = result.get("result") or []
-                    html = build_ui_links(links)
-                    elapsed_time = get_elapsed_time(keyword)
-                    elapsed_time_msg = f"Elapsed time was: {elapsed_time:.2f}s"
-                    log.info(elapsed_time_msg)
+                for i, res in enumerate(results):
+                    url = urls[i]
+                    depth = depths[i]
+                    log.info(f"[{keyword}] Crawling {url} (depth={depth}) elapsed {get_elapsed_time(keyword):.2f}s")
 
-                    db_result = f"{len(links)} keyword matches found at {url} in {depth} clicks. {elapsed_time_msg}<br>{html}"
-                    db.update_keyword_with_result(keyword, db_result)
+                    if depth >= DEPTH_LIMIT:
+                        log.info(f"[{keyword}] Depth limit reached at {url}")
+                        continue
 
-                    log.info(f"[{keyword}] Keyword FOUND at {url} — stopping crawl")
-                    stop_keyword(keyword)
-                    break
+                    # Success → update DB, stop all workers
+                    if res.get("status") == "success":
+                        child_links = res.get("result") or []
+                        db_result = f"""
+                        {len(child_links)} matches at {url} in {depth} clicks.<br>
+                        It took {get_elapsed_time(keyword):.2f}s total.<br>
+                        {build_ui_links(child_links)}
+                        """
+                        db.update_keyword_with_result(keyword, db_result)
+                        stop_keyword(keyword)
+                        log.info(f"[{keyword}] Keyword found at {url}, stopping crawl.")
+                        break  # stop processing remaining URLs in this batch
 
-                if result.get("status") == "failure":
-                    continue
+                    # Push child URLs to frontier (BFS)
+                    child_links = res.get("result") or []
+                    if child_links:
+                        serialized_links = [serialize(link, depth + 1) for link in child_links]
+                        redis_conn.rpush(frontier_key(keyword), *serialized_links)
+                        log.info(f"[{keyword}] Enqueued {len(child_links)} child URLs from {url}")
 
-                # Push discovered links to frontier
-                for link in result.get("result") or []:
-                    if is_active(keyword):
-                        redis_conn.rpush(frontier_key(keyword), serialize(link, depth + 1))
+                # Frontier size after batch
+                frontier_size = redis_conn.llen(frontier_key(keyword))
+                log.info(f"[{keyword}] Frontier size after batch: {frontier_size}")
 
             except Exception as e:
-                log.warning(f"[{keyword}] Error crawling {url}: {e}")
+                log.warning(f"[{keyword}] Error processing batch: {e}")
 
-            # Optional: small sleep to avoid hammering
-            time.sleep(0.1)
     finally:
         db.client.close()
-        log.info(f"[{keyword}] Crawl worker exiting")
 
 # ---- Keyword job ----
 def keyword_job(keyword):
     log.info(f"[{keyword}] Keyword job started")
+
     start_time = time.time()
     redis_conn.set(f"keyword:{keyword}:start_time", start_time)
 
-    # Initialize state
-    redis_conn.set(active_key(keyword), 1)
+    # Initialize keyword state
+    redis_conn.set(active_key(keyword), "1")
     redis_conn.delete(frontier_key(keyword))
     redis_conn.delete(visited_key(keyword))
 
-    # Seed frontier
+    # Seed frontier with the start URL
     redis_conn.rpush(frontier_key(keyword), serialize(START_URL, 0))
+    log.info(f"[{keyword}] Frontier seeded with {START_URL}")
 
-    # Start fixed number of crawl workers
-    for _ in range(CRAWL_WORKERS):
+    # Enqueue crawl workers (non-blocking)
+    for i in range(CRAWL_WORKERS):
         crawl_q.enqueue(crawl_worker, keyword)
+        log.info(f"[{keyword}] Enqueued crawl worker {i+1}/{CRAWL_WORKERS}")
 
-    log.info(f"[{keyword}] Enqueued {CRAWL_WORKERS} crawl workers (non-blocking)")
+    log.info(f"[{keyword}] All crawl workers enqueued for keyword.")
+
 
 # ---- Public API ----
 def start_crawl(keyword):
     keyword_q.enqueue(keyword_job, keyword)
-    log.info(f"[{keyword}] Enqueued keyword job")
+    log.info(f"[{keyword}] Keyword job enqueued in keyword queue")
+
