@@ -33,6 +33,9 @@ def frontier_key(keyword):
 def visited_key(keyword):
     return f"keyword:{keyword}:visited"
 
+def start_time_key(keyword):
+    return f"keyword:{keyword}:start_time"
+
 # ---- Helpers ----
 def serialize(url, depth):
     return json.dumps({"url": url, "depth": depth})
@@ -45,6 +48,7 @@ def is_active(keyword):
     return redis_conn.exists(active_key(keyword))
 
 def stop_keyword(keyword):
+    redis_conn.delete(start_time_key(keyword))
     redis_conn.delete(active_key(keyword))
 
 def mark_visited(keyword, url):
@@ -140,7 +144,7 @@ def keyword_job(keyword):
     log.info(f"[{keyword}] Keyword job started")
 
     start_time = time.time()
-    redis_conn.set(f"keyword:{keyword}:start_time", start_time)
+    redis_conn.set(start_time_key(keyword), start_time)
 
     # Initialize keyword state
     redis_conn.set(active_key(keyword), "1")
